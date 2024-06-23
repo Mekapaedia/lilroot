@@ -1,1 +1,6 @@
-small root making thing
+makes a small statically linked root
+the main idea is to have a little statically linked set of tools in a home directory
+on the cluster at work, where LD_LIBRARY_PATH/PATH gets changed all the time,
+that I can use as a baseline set of tools that always work
+
+So far git, binutils, sbase, curl, oksh, curl, etc all seem to work
