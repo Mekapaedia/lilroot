@@ -356,6 +356,7 @@ build_binutils()
     then
         make distclean
     fi
+    rm $(find . -name config.cache)
     ./configure \
         --prefix="${INSTALL_PREFIX}" \
         --with-sysroot="${INSTALL_PREFIX}" \
@@ -363,15 +364,21 @@ build_binutils()
         --build="${TARGET}" \
         --host="${TARGET}" \
         --target="${TARGET}" \
-        --enable-targets="${TARGET}" \
+        --enable-targets="x86_64-pep" \
         --enable-install-libiberty \
         --enable-install-libbfd \
+        --enable-relro \
         --disable-nls \
         --disable-gdb \
-        --disable-gprofng \
+        --enable-default-hash-style=gnu \
+        --enable-gprofng=no \
         --disable-gold \
         --disable-libquadmath \
         --disable-bootstrap \
+        --disable-libdecnumber \
+        --disable-readline \
+        --disable-sim \
+        --disable-seperate-code \
         --enable-64-bit-bfd \
         --enable-ld=default \
         --with-system-zlib \
@@ -383,6 +390,7 @@ build_binutils()
         --disable-plugins \
         --disable-multilib \
         --without-libiconv-prefix \
+        --without-msgpack \
         --disable-libstdcxx \
         --enable-new-dtags \
         || return 1
@@ -579,7 +587,7 @@ export SHELL="$(which sh)"
 export CONFIG_SHELL="${SHELL}"
 export SED="sed"
 export CC="${MUSL_CC}"
-if ! "${MUSL_CC}"
+if ! "${MUSL_CC}" --version 2>&1 >/dev/null
 then
     export CC="${MUSL_BASE_CC}"
 fi
