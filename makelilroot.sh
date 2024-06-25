@@ -327,17 +327,20 @@ build_git()
     make \
         V=1 \
         SHELL_PATH="${SHELL}" \
-        NO_OPENSSL=1 \
-        NO_SVN_TESTS=1 \
-        NO_PERL=1 \
-        NO_GITWEB=1 \
-        NO_PYTHON=1 \
-        NO_TCLTK=1 \
-        NO_INSTALL_HARDLINKS=1 \
+        NO_OPENSSL=YesPlease \
+        NO_SVN_TESTS=YesPlease \
+        NO_PERL=YesPlease \
+        NO_GITWEB=YesPlease \
+        NO_PYTHON=YesPlease \
+        NO_TCLTK=YesPlease \
+        NO_INSTALL_HARDLINKS=YesPlease \
         INSTALL_STRIP="-s" \
-        NO_GETTEXT=1 \
-        NO_EXPAT=1 \
-        NO_REGEX=1 \
+        NO_GETTEXT=YesPlease \
+        NO_EXPAT=YesPlease \
+        NO_REGEX=YesPlease \
+        INSTALL_SYMLINKS=YesPlease \
+        NO_ICONV=YesPlease \
+        SKIP_DASHED_BUILT_INS=YesPlease \
         CURLDIR="${INSTALL_PREFIX}" \
         prefix="${INSTALL_PREFIX}" \
         CC="${MUSL_CC}" \
@@ -364,9 +367,7 @@ build_binutils()
         --build="${TARGET}" \
         --host="${TARGET}" \
         --target="${TARGET}" \
-        --enable-targets="x86_64-pep" \
-        --enable-install-libiberty \
-        --enable-install-libbfd \
+        --enable-targets="${TARGET}" \
         --enable-relro \
         --disable-nls \
         --disable-gdb \
@@ -581,6 +582,16 @@ setup_root
 
 cd "${REPOS_DIR}"
 
+if [ "${CLEAN_BUILD}" -eq 1 ]
+then
+    clean_build
+fi
+
+if [ "${CLEAN_ROOT}" -eq 1 ]
+then
+    clean_root
+fi
+
 export PATH="${BIN_DIR}:${PATH}"
 export MKDIR_P="mkdir -p"
 export SHELL="$(which sh)"
@@ -596,16 +607,6 @@ export CXXFLAGS="${CFLAGS}"
 export LIBS="${MUSL_LIBS}"
 export LDFLAGS="-static --static ${MUSL_LDFLAGS}"
 export LINGUAS=""
-
-if [ "${CLEAN_BUILD}" -eq 1 ]
-then
-    clean_build
-fi
-
-if [ "${CLEAN_ROOT}" -eq 1 ]
-then
-    clean_root
-fi
 
 if [ "${BUILD_MUSL}" -eq 1 ]
 then
