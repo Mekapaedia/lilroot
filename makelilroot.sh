@@ -18,10 +18,6 @@ MUSL_CFLAGS="-Os -fPIC -fno-use-linker-plugin"
 MUSL_LIBS="-L${LIB_DIR}"
 MUSL_LDFLAGS="-fno-use-linker-plugin ${MUSL_LIBS}"
 
-BASE_URL="https://github.com/Mekapaedia/sbase.git"
-BASE_DIR="sbase"
-BASE_SRC_DIR="${REPOS_DIR}/${BASE_DIR}"
-
 BYACC_VER="20240109"
 BYACC_DIR="byacc-${BYACC_VER}"
 BYACC_URL="https://invisible-island.net/datafiles/release/byacc.tar.gz"
@@ -34,6 +30,12 @@ LEX_SRC_DIR="${REPOS_DIR}/${LEX_DIR}"
 ZLIB_URL="https://github.com/madler/zlib.git"
 ZLIB_DIR="zlib"
 ZLIB_SRC_DIR="${REPOS_DIR}/${ZLIB_DIR}"
+
+BUSYBOX_VER="1.36.1"
+BUSYBOX_DIR="busybox-${BUSYBOX_VER}"
+BUSYBOX_URL="https://www.busybox.net/downloads/busybox-${BUSYBOX_VER}.tar.bz2"
+BUSYBOX_SRC_DIR="${REPOS_DIR}/${BUSYBOX_DIR}"
+BUSYBOX_CONFIG="${REPOS_DIR}/busybox_config"
 
 DROPBEAR_URL="https://github.com/mkj/dropbear.git"
 DROPBEAR_DIR="dropbear"
@@ -49,6 +51,7 @@ CURL_DIR="tiny-curl-${CURL_VER}"
 CURL_SRC_DIR="${REPOS_DIR}/${CURL_DIR}"
 
 GIT_URL="git://git.kernel.org/pub/scm/git/git.git"
+GIT_VER="v2.20.5"
 GIT_DIR="git"
 GIT_SRC_DIR="${REPOS_DIR}/${GIT_DIR}"
 
@@ -62,30 +65,21 @@ MAKE_URL="https://ftp.gnu.org/gnu/make/make-${MAKE_VER}.tar.gz"
 MAKE_DIR="make-${MAKE_VER}"
 MAKE_SRC_DIR="${REPOS_DIR}/${MAKE_DIR}"
 
-NETBSD_CURSES_URL="https://github.com/sabotage-linux/netbsd-curses.git"
-NETBSD_CURSES_DIR="netbsd-curses"
-NETBSD_CURSES_SRC_DIR="${REPOS_DIR}/${NETBSD_CURSES_DIR}"
-
-OKSH_URL="https://github.com/Mekapaedia/oksh"
-OKSH_DIR="oksh"
-OKSH_SRC_DIR="${REPOS_DIR}/${OKSH_DIR}"
-
 ALL_REPOS="${MUSL_SRC_DIR} \
-           ${BASE_SRC_DIR} \
            ${BYACC_SRC_DIR} \
            ${LEX_SRC_DIR} \
            ${ZLIB_SRC_DIR} \
+           ${BUSYBOX_SRC_DIR} \
            ${DROPBEAR_SRC_DIR} \
            ${BEARSSL_SRC_DIR} \
            ${CURL_SRC_DIR} \
            ${GIT_SRC_DIR} \
            ${BINUTILS_SRC_DIR} \
            ${MAKE_SRC_DIR} \
-           ${NETBSD_CURSES_SRC_DIR} \
-           ${OKSH_SRC_DIR} \
            "
 
 ALL_ARCHIVES="${BYACC_DIR}.tar ${BYACC_DIR}.tar.gz \
+              ${BUSYBOX_DIR}.tar ${BUSYBOX_DIR}.tar.bz2 \
               ${CURL_DIR}.tar ${CURL_DIR}.tar.gz \
               ${MAKE_DIR}.tar ${MAKE_DIR}.tar.gz \
               ${BINUTILS_DIR}.tar ${BINUTILS_DIR}.tar.gz \
@@ -101,7 +95,7 @@ Makes a small statically liked root in $INSTALL_PREFIX
 clean: clean build directories prior to build
 distclean: clean build + root prior to build
 programs: list of programs to build. Currently:
-    musl, base, byacc, lex, zlib, dropbear, bearssl, curl, git, binutils, make, netbsd-curses, oksh
+    musl, byacc, lex, zlib, busybox, dropbear, bearssl, curl, git, binutils, make
     (built in that order)
 all: build all programs specified above
 post-clean: clean build after building (saves space)
@@ -143,7 +137,12 @@ clone_cd_rebase()
         git clone "$1" "$2" || return 1
     fi
     cd "$2" || return 1
-    git pull --rebase --autostash || return 1
+    if [ -n "$3" ]
+    then
+        git checkout "$3" || return 1
+    else
+        git pull --rebase --autostash || return 1
+    fi
 }
 
 setup_root()
@@ -163,7 +162,12 @@ get_archive_cd()
 {
     cd "${REPOS_DIR}"
     TAR_EX="tar"
-    COMP_EX="gz"
+    COMP_EX="${3}"
+    DECOMPRESS="gzip"
+    if [ "${3}" = "bz2" ]
+    then
+        DECOMPRESS="bzip2"
+    fi
     TARGET_DIR="${1}"
     SRC_NAME="$(basename ${TARGET_DIR})"
     TAR_NAME="${SRC_NAME}.tar"
@@ -178,7 +182,7 @@ get_archive_cd()
             then
                 curl "${2}" -o "${ARCHIVE_NAME}" || return 1
             fi
-            gzip -d "${ARCHIVE_NAME}" || return 1
+            "${DECOMPRESS}" -d "${ARCHIVE_NAME}" || return 1
         fi
         tar -x -f "${TAR_NAME}" || return 1
     fi
@@ -197,29 +201,9 @@ build_musl()
     make install || return 1
 }
 
-build_base()
-{
-    clone_cd_rebase "${BASE_URL}" "${BASE_SRC_DIR}" || return 1
-    make clean
-    git restore config.mk || return 1
-    mv config.mk config.mk.orig
-    sed "s|/usr/local|${INSTALL_PREFIX}|" <config.mk.orig >config.mk || return 1
-    echo "CC = ${MUSL_CC}" >> config.mk
-    echo "LDFLAGS = -static ${MUSL_LDFLAGS}" >> config.mk
-    echo "CFLAGS = -static ${MUSL_CFLAGS}" >> config.mk
-    make all install || return 1
-    ln -sf "${BIN_DIR}/xinstall" "${BIN_DIR}/install"
-    echo "#!/bin/sh" > "${BIN_DIR}/bsdtar" || return 1
-    echo 'if [ "$#" -lt 1 ]; then tar; exit $?; fi' >> "${BIN_DIR}/bsdtar" || return 1
-    echo 'BSDTAR_ARGS="$1"' >> "${BIN_DIR}/bsdtar" || return 1
-    echo "shift" >> "${BIN_DIR}/bsdtar" || return 1
-    echo 'tar $(echo "${BSDTAR_ARGS}" | sed "s/[^xfcmtjaJZ]//g" | sed "s/[xfcmtjaJZ]/-& /g") $@' >> ${BIN_DIR}/bsdtar || return 1
-    chmod +x "${BIN_DIR}/bsdtar" || return 1
-}
-
 build_byacc()
 {
-    get_archive_cd "${BYACC_SRC_DIR}" "${BYACC_URL}"
+    get_archive_cd "${BYACC_SRC_DIR}" "${BYACC_URL}" gz
     if [ -f "Makefile" ]
     then
         make distclean
@@ -263,8 +247,19 @@ build_zlib()
         || return 1
     make static || return 1
     make install || return 1
-    cp minigzip "${BIN_DIR}"
-    cd "${BIN_DIR}" && ln -sf "minigzip" "gzip"
+}
+
+build_busybox()
+{
+    get_archive_cd "${BUSYBOX_SRC_DIR}" "${BUSYBOX_URL}" bz2
+    if [ -f "Makefile" ]
+    then
+        make distclean
+    fi
+    cp "${BUSYBOX_CONFIG}" .config || return 1
+    make oldconfig V=1 HOSTCC="${MUSL_CC} ${MUSL_CFLAGS} -static" CC="${MUSL_CC} ${MUSL_CFLAGS}" || return 1
+    make V=1 HOSTCC="${MUSL_CC} ${MUSL_CFLAGS} -static" CC="${MUSL_CC} ${MUSL_CFLAGS}" || return 1
+    make install V=1 HOSTCC="${MUSL_CC} ${MUSL_CFLAGS} -static" CC="${MUSL_CC} ${MUSL_CFLAGS}" || return 1
 }
 
 build_dropbear()
@@ -302,7 +297,7 @@ build_bearssl()
 
 build_curl()
 {
-    get_archive_cd "${CURL_SRC_DIR}" "${CURL_URL}"
+    get_archive_cd "${CURL_SRC_DIR}" "${CURL_URL}" gz
     make distclean
     cp "${CURL_SRC_DIR}/src/tool_hugehelp.c.cvs" "${CURL_SRC_DIR}/src/tool_hugehelp.c"
     ./configure \
@@ -322,7 +317,7 @@ build_curl()
 
 build_git()
 {
-    clone_cd_rebase "${GIT_URL}" "${GIT_SRC_DIR}" || return 1
+    clone_cd_rebase "${GIT_URL}" "${GIT_SRC_DIR}" "${GIT_VER}" || return 1
     make distclean
     make \
         V=1 \
@@ -341,20 +336,21 @@ build_git()
         INSTALL_SYMLINKS=YesPlease \
         NO_ICONV=YesPlease \
         SKIP_DASHED_BUILT_INS=YesPlease \
+        NO_R_TO_GCC_LINKER=YesPlease \
         CURLDIR="${INSTALL_PREFIX}" \
         prefix="${INSTALL_PREFIX}" \
         CC="${MUSL_CC}" \
         CFLAGS="${MUSL_CFLAGS}" \
         LDFLAGS="-static ${MUSL_LDFLAGS}" \
         EXTLIBS="-lbearssl -lz" \
-        TAR=bsdtar \
+        strip \
         install \
         || return 1
 }
 
 build_binutils()
 {
-    get_archive_cd "${BINUTILS_SRC_DIR}" "${BINUTILS_URL}"
+    get_archive_cd "${BINUTILS_SRC_DIR}" "${BINUTILS_URL}" gz
     if [ -f "Makefile" ]
     then
         make distclean
@@ -402,7 +398,7 @@ build_binutils()
 
 build_make()
 {
-    get_archive_cd "${MAKE_SRC_DIR}" "${MAKE_URL}"
+    get_archive_cd "${MAKE_SRC_DIR}" "${MAKE_URL}" gz
     if [ -f "Makefile" ]
     then
         make distclean
@@ -418,54 +414,17 @@ build_make()
     rm -rf "${INSTALL_PREFIX}/share/info"
 }
 
-build_netbsd_curses()
-{
-    clone_cd_rebase "${NETBSD_CURSES_URL}" "${NETBSD_CURSES_SRC_DIR}" || return 1
-    make clean
-    make -f GNUmakefile \
-        PREFIX="${INSTALL_PREFIX}" \
-        CC="${MUSL_CC}" \
-        CFLAGS="${MUSL_CFLAGS}" \
-        CFLAGS_HOST="${MUSL_CFLAGS}" \
-        LDFLAGS_HOST="-static ${MUSL_LDFLAGS}" \
-        LDFLAGS="-static ${MUSL_LDFLAGS}" \
-        all-static \
-        install-static \
-        || return 1
-}
-
-build_oksh()
-{
-    clone_cd_rebase "${OKSH_URL}" "${OKSH_SRC_DIR}" || return 1
-    if [ -f "Makefile" ]
-    then
-        make distclean
-    fi
-    LDFLAGS="${MUSL_LDFLAGS}" \
-    ./configure \
-        --prefix="${INSTALL_PREFIX}" \
-        --cc="${MUSL_CC}" \
-        --cflags="${MUSL_CFLAGS}" \
-        --enable-static \
-        || return 1
-    make || return 1
-    make install || return 1
-    cd "${BIN_DIR}" && ln -sf "oksh" "sh"
-}
-
 BUILD_MUSL=0
-BUILD_BASE=0
 BUILD_BYACC=0
 BUILD_LEX=0
 BUILD_ZLIB=0
+BUILD_BUSYBOX=0
 BUILD_DROPBEAR=0
 BUILD_CURL=0
 BUILD_BEARSSL=0
 BUILD_GIT=0
 BUILD_BINUTILS=0
 BUILD_MAKE=0
-BUILD_NETBSD_CURSES=0
-BUILD_OKSH=0
 
 CLEAN_BUILD=0
 CLEAN_ROOT=0
@@ -502,10 +461,6 @@ do
             BUILD_MUSL=1
             shift
             ;;
-        base)
-            BUILD_BASE=1
-            shift
-            ;;
         byacc)
             BUILD_BYACC=1
             shift
@@ -516,6 +471,10 @@ do
             ;;
         zlib)
             BUILD_ZLIB=1
+            shift
+            ;;
+        busybox)
+            BUILD_BUSYBOX=1
             shift
             ;;
         dropbear)
@@ -542,28 +501,18 @@ do
             BUILD_MAKE=1
             shift
             ;;
-        netbsd-curses)
-            BUILD_NETBSD_CURSES=1
-            shift
-            ;;
-        oksh)
-            BUILD_OKSH=1
-            shift
-            ;;
         all)
             BUILD_MUSL=1
-            BUILD_BASE=1
             BUILD_BYACC=1
             BUILD_LEX=1
             BUILD_ZLIB=1
+            BUILD_BUSYBOX=1
             BUILD_DROPBEAR=1
             BUILD_BEARSSL=1
             BUILD_CURL=1
             BUILD_GIT=1
             BUILD_BINUTILS=1
             BUILD_MAKE=1
-            BUILD_NETBSD_CURSES=1
-            BUILD_OKSH=1
             shift
             ;;
         help|-h|--help)
@@ -598,7 +547,7 @@ export SHELL="$(which sh)"
 export CONFIG_SHELL="${SHELL}"
 export SED="sed"
 export CC="${MUSL_CC}"
-if ! "${MUSL_CC}" --version 2>&1 >/dev/null
+if ! command -v "${MUSL_CC}" >/dev/null 2>&1
 then
     export CC="${MUSL_BASE_CC}"
 fi
@@ -614,11 +563,6 @@ then
     export CC="${MUSL_CC}"
 fi
 
-if [ "${BUILD_BASE}" -eq 1 ]
-then
-    build_base || exit 1
-fi
-
 if [ "${BUILD_BYACC}" -eq 1 ]
 then
     build_byacc || exit 1
@@ -632,6 +576,13 @@ fi
 if [ "${BUILD_ZLIB}" -eq 1 ]
 then
     build_zlib || exit 1
+fi
+
+if [ "${BUILD_BUSYBOX}" -eq 1 ]
+then
+    build_busybox || exit 1
+    export SHELL="$(which sh)"
+    export CONFIG_SHELL="${SHELL}"
 fi
 
 if [ "${BUILD_DROPBEAR}" -eq 1 ]
@@ -662,18 +613,6 @@ fi
 if [ "${BUILD_MAKE}" -eq 1 ]
 then
     build_make || exit 1
-fi
-
-if [ "${BUILD_NETBSD_CURSES}" -eq 1 ]
-then
-    build_netbsd_curses || exit 1
-fi
-
-if [ "${BUILD_OKSH}" -eq 1 ]
-then
-    build_oksh || exit 1
-    export SHELL="$(which sh)"
-    export CONFIG_SHELL="${SHELL}"
 fi
 
 if [ "${POST_CLEAN_BUILD}" -eq 1 ]
