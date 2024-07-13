@@ -155,7 +155,15 @@ setup_root()
     cd "${INSTALL_PREFIX}/usr" && ln -snf "../bin" "bin"
     cd "${INSTALL_PREFIX}/usr" && ln -snf "../lib" "lib"
     cd "${INSTALL_PREFIX}/usr" && ln -snf "bin" "sbin"
-    cd "${INSTALL_PREFIX}" && ln -snf "bin" "sbin"
+    if [ -d "${INSTALL_PREFIX}/sbin" ] && [ ! -h "${INSTALL_PREFIX}/sbin" ]
+    then
+        mv "${INSTALL_PREFIX}/sbin"/* "${BIN_DIR}"
+        rmdir "${INSTALL_PREFIX}/sbin"
+    fi
+    if [ ! -h "${INSTALL_PREFIX}/sbin" ]
+    then
+        cd "${INSTALL_PREFIX}" && ln -snf "bin" "sbin"
+    fi
 }
 
 get_archive_cd()
@@ -366,7 +374,6 @@ build_binutils()
         --enable-targets="${TARGET}" \
         --enable-relro \
         --disable-nls \
-        --disable-gdb \
         --enable-default-hash-style=gnu \
         --enable-gprofng=no \
         --disable-gold \
@@ -383,7 +390,6 @@ build_binutils()
         --with-pic \
         --disable-libada \
         --disable-libssp \
-        --disable-gcov \
         --disable-plugins \
         --disable-multilib \
         --without-libiconv-prefix \
